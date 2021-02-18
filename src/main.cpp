@@ -1,62 +1,120 @@
 #include <Arduino.h>
 
-#include <AsyncMqttClient.h>
-#include <WiFi.h>
 #include <Tasker.h>
 
 #define MQTT_HOST "test.mosquitto.org"
 #define MQTT_PORT 1883
 
-AsyncMqttClient mqttClient;
-TimerHandle_t mqttReconnectTimer;
-TimerHandle_t wifiReconnectTimer;
+const char apn[] = "internet.t-mobile.cz";
+const char user[] = "";
+const char pass[] = "";
 
-void connectToWifi() {
-    const char *ssid = "Hrosinec";
-    const char *password = "hrochLupinek";
-    Serial.printf("Using SSID %s and password %s\n", ssid, password);
+#define TINY_GSM_MODEM_SIM808
+#define SERIALGSM Serial2
 
-    WiFi.softAPdisconnect(true); // for case it was configured as access point in last run...
-    Serial.print(F("Connecting to "));
-    Serial.println(ssid);
+#include <TinyGsmClient.h>
+#include <PubSubClient.h>
 
-    WiFi.begin(ssid, password);
-}
 
-void connectToMqtt() {
-    Serial.println("Connecting to MQTT...");
-    mqttClient.connect();
-}
+TinyGsm modem(SERIALGSM);
+TinyGsmClient gsmClient(modem);
+PubSubClient mqttClient(gsmClient);
 
-void WiFiEvent(WiFiEvent_t event) {
-    switch (event) {
-        case SYSTEM_EVENT_STA_GOT_IP:
-            Serial.println("WiFi connected");
-            Serial.println("IP address: ");
-            Serial.println(WiFi.localIP());
-            connectToMqtt();
-            break;
-        case SYSTEM_EVENT_STA_DISCONNECTED:
-            Serial.println("WiFi lost connection");
-            xTimerStop(mqttReconnectTimer, 0); // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
-            xTimerStart(wifiReconnectTimer, 0);
-            break;
+
+bool connectToGsm() {
+    bool modemConnected = false;
+
+    Serial.println(F("Initializing modem..."));
+    TinyGsmAutoBaud(SERIALGSM, 9600, 57600);
+
+    if (!modem.init()) {
+        Serial.println("Modem init failed!!!");
+        return false;
     }
-}
 
-void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
-    Serial.println("Disconnected from MQTT.");
+    String modemInfo = modem.getModemInfo();
+    Serial.print(F("Modem: "));
+    Serial.println(modemInfo);
 
-    if (WiFi.isConnected()) {
-        xTimerStart(mqttReconnectTimer, 0);
+    while (!modemConnected) {
+        Serial.print(F("Waiting for network..."));
+        if (!modem.waitForNetwork()) {
+            Serial.println(" fail");
+            delay(1000);
+            return false;
+        }
+        Serial.println(" OK");
+
+        Serial.print(F("Connecting to "));
+        Serial.print(apn);
+        if (!modem.gprsConnect(apn, user, pass)) {
+            Serial.println(" fail");
+            delay(1000);
+            return false;
+        }
+
+        modemConnected = true;
+        Serial.println(" OK");
     }
+
+    return true;
 }
 
 boolean started = false;
 
-void start(bool sessionPresent) {
-    Serial.println("Connected to MQTT");
+void start();
 
+void reconnect() {
+    // Loop until we're reconnected
+    while (!mqttClient.connected()) {
+        Serial.print("Attempting MQTT connection...");
+        // Create a random client ID
+        String clientId = "ESP8266Client-";
+        clientId += String(random(0xffff), HEX);
+        // Attempt to connect
+        if (mqttClient.connect(clientId.c_str())) {
+            Serial.printf(" connected to %s\n", MQTT_HOST);
+            start();
+        } else {
+            Serial.print("failed, rc=");
+            Serial.print(mqttClient.state());
+            Serial.println(" try again in 5 seconds");
+            // Wait 5 seconds before retrying
+            delay(5000);
+        }
+    }
+}
+
+void setup() {
+    Serial.begin(9600);
+
+    mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+
+    NetworkTasker.once([] {
+        if (connectToGsm()) { reconnect(); }
+        else {
+            // TODO display
+            Serial.println("Could not connect to GSM!!!");
+        }
+    });
+
+    NetworkTasker.loop([] {
+        if (started) {
+            if (!mqttClient.connected()) {
+                reconnect();
+                return;
+            }
+
+            mqttClient.loop();
+        }
+    });
+}
+
+void loop() {
+    // no op - everything is handled by native tasks through Tasker
+}
+
+void start() {
     if (!started) {
         Serial.println("Starting the app");
 
@@ -65,35 +123,10 @@ void start(bool sessionPresent) {
                 char buffer[50];
                 sprintf(buffer, "From start: %lu", millis());
 
-                if (mqttClient.publish("jenda-test", 0, true, buffer) == 0) {
+                if (!mqttClient.publish("jenda-test", buffer, true)) {
                     Serial.println("Could not send message!");
                 }
             }
         });
     }
-}
-
-void setup() {
-    Serial.begin(9600);
-    Serial.println();
-    Serial.println();
-
-    mqttReconnectTimer = xTimerCreate("mqttTimer", pdMS_TO_TICKS(2000), pdFALSE, (void *) 0,
-                                      reinterpret_cast<TimerCallbackFunction_t>(connectToMqtt));
-    wifiReconnectTimer = xTimerCreate("wifiTimer", pdMS_TO_TICKS(2000), pdFALSE, (void *) 0,
-                                      reinterpret_cast<TimerCallbackFunction_t>(connectToWifi));
-
-    WiFi.onEvent(WiFiEvent);
-
-    mqttClient.onConnect(start);
-    mqttClient.onDisconnect(onMqttDisconnect);
-    mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-
-    NetworkTasker.once([] {
-        connectToWifi();
-    });
-}
-
-void loop() {
-    // no op - everything is handled by native tasks through Tasker
 }
