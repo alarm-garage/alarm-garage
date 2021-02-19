@@ -24,28 +24,37 @@ void execute(void *uarg) {
     fnc();
 }
 
-void Tasker::loop(std::function<void(void)> op) const {
+void Tasker::loop(const char *name, std::function<void(void)> op) const {
     auto *fnc = new std::function<void(void)>{[op] {
         op();
-        taskYIELD();
+        Tasker::yield();
     }};
-    xTaskCreatePinnedToCore(executeLoop, "", 10000, static_cast<void *>(fnc), 1, NULL, core);
+    xTaskCreatePinnedToCore(executeLoop, name, 10000, static_cast<void *>(fnc), 1, NULL, core);
 }
 
-void Tasker::loopEvery(int millis, std::function<void(void)> op) const {
+void Tasker::loopEvery(const char *name, int millis, std::function<void(void)> op) const {
     auto *fnc = new std::function<void(void)>{[op, millis] {
         op();
-        vTaskDelay(millis / portTICK_PERIOD_MS);
+        Tasker::sleep(millis);
     }};
-    xTaskCreatePinnedToCore(executeLoop, "", 10000, static_cast<void *>(fnc), 1, NULL, core);
+    xTaskCreatePinnedToCore(executeLoop, name, 10000, static_cast<void *>(fnc), 1, NULL, core);
 }
 
-void Tasker::once(std::function<void(void)> op) const {
+void Tasker::once(const char *name, std::function<void(void)> op) const {
     auto *fnc = new std::function<void(void)>{[op] {
         op();
         vTaskDelete(NULL);
     }};
-    xTaskCreatePinnedToCore(execute, "", 10000, static_cast<void *>(fnc), 1, NULL, core);
+    xTaskCreatePinnedToCore(execute, name, 10000, static_cast<void *>(fnc), 1, NULL, core);
+}
+
+void Tasker::sleep(int millis) {
+    taskYIELD();
+    vTaskDelay(pdMS_TO_TICKS(millis));
+}
+
+void Tasker::yield() {
+    Tasker::sleep(1);
 }
 
 
