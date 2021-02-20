@@ -5,7 +5,7 @@
 #define MQTT_HOST "test.mosquitto.org"
 #define MQTT_PORT 1883
 
-#define PIN_SLEEP 5
+#define PIN_SLEEP 16
 
 const char apn[] = "internet.t-mobile.cz";
 const char user[] = "";
@@ -17,11 +17,16 @@ const char pass[] = "";
 #include <TinyGsmClient.h>
 #include <PubSubClient.h>
 #include <mutex>
-
+//#include <SPI.h>
+#include "printf.h"
+#include "RF24.h"
 
 TinyGsm modem(SERIALGSM);
 TinyGsmClient gsmClient(modem);
 PubSubClient mqttClient(gsmClient);
+RF24 radio(4, 5); //CE, CSN
+
+const byte address[6] = "1tran";
 
 boolean started = false, sleeping = false, reconnecting = false;
 
@@ -59,6 +64,27 @@ void sleepEnable(bool enabled) {
     Tasker::sleep(55);
     modem.sleepEnable(enabled);
 
+}
+
+void initRadio() {
+    if (!radio.begin()) {
+        Serial.println("Could not initialize radio!!!");
+        for (int i = 0; i < 5; i++) {
+            delay(200);
+        }
+    } else {
+        Serial.println("Radio initialized");
+    }
+
+    radio.setAutoAck(true);
+    radio.enableDynamicPayloads();
+    radio.setDataRate(RF24_250KBPS);
+    radio.setRetries(15, 15);
+    radio.setPALevel(RF24_PA_MAX);
+    radio.setChannel(109);
+    radio.openReadingPipe(1, address);
+    radio.startListening();
+    radio.printDetails();
 }
 
 bool connectToGsm() {
@@ -149,10 +175,31 @@ void connectMQTT() {
     reconnecting = false;
 }
 
+void radioReceive() {
+    byte clientId = 0;
+    if (radio.available(&clientId)) {
+        char rawData[30] = {0};
+        radio.read(&rawData, sizeof(rawData));
+        Serial.printf("Data receive: %s\n", rawData);
+    }
+}
+
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(115200);
 
     pinMode(PIN_SLEEP, OUTPUT);
+
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_33, LOW);
+
+    initRadio();
+    delay(100);
+    NetworkTasker.loop("Radio", [] {
+        radioReceive();
+//        Tasker::sleep(1000);
+//        esp_light_sleep_start();
+//        Tasker::sleep(100);
+    });
+
 
     mqttClient.setServer(MQTT_HOST, MQTT_PORT);
 
