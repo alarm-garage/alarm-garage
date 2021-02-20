@@ -76,7 +76,7 @@ void setup() {
     esp_sleep_enable_ext1_wakeup(0x100000000, ESP_EXT1_WAKEUP_ANY_HIGH);
     esp_sleep_enable_timer_wakeup(15 * 1000000);
 
-    DefaultTasker.loop("RadioRemote", [] {
+    DefaultTasker.loop("SleepingLoop", [] {
         startSleep();
 
         switch (esp_sleep_get_wakeup_cause()) {
@@ -102,6 +102,7 @@ void setup() {
 
         if (radio.radioReceive(rawReceivedData)) {
             Serial.printf("Radio data receive: '%s'\n", rawReceivedData);
+            toggleArmed();
         }
 
         bool doorsOpen = areDoorsOpen();
