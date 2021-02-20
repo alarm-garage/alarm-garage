@@ -1,12 +1,11 @@
 #include <StateManager.h>
-#include <Constants.h>
 
-StateManager::StateManager() {
+StateManager::StateManager(){
     started = false;
     modemSleeping = false;
     reconnecting = false;
     armed = false;
-    doorsOpen = digitalRead(AG_PIN_DOOR_SENSOR) == 0;
+    doorsOpen = false; // temporary
 }
 
 void StateManager::toggleArmed() {
@@ -22,8 +21,9 @@ void StateManager::printCurrentState() const {
     );
 }
 
-void StateManager::setStarted() {
+void StateManager::setStarted(bool doorsOpen) {
     started = true;
+    this->doorsOpen = doorsOpen;
 }
 
 void StateManager::setModemSleeping(bool sleeping) {

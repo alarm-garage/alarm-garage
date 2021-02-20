@@ -5,7 +5,10 @@
 #define MQTT_PORT 1883
 
 #define AG_PIN_SLEEP 13
-#define AG_PIN_DOOR_SENSOR 2
+#define AG_PIN_DOOR_SENSOR 32
+
+#define AG_PIN_RF_CE 4
+#define AG_PIN_RF_CSN 5
 
 #define APN_HOST "internet.t-mobile.cz"
 #define APN_USER ""

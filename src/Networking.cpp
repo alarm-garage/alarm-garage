@@ -136,12 +136,6 @@ void Networking::connectMQTT() {
 Networking::Networking(const StateManager &stateManager) {
     this->stateManager = stateManager;
 
-//    NetworkTasker.loop("MQTT loop", [this] {
-//        std::lock_guard<std::mutex> lg(this->modem_mutex);
-//
-//        this->mqttClient.loop();
-//    });
-
     NetworkTasker.loopEvery("Reconnect", 1000, [this] {
         if (this->stateManager.isStarted() && !this->stateManager.isModemSleeping() && !this->stateManager.isReconnecting()) {
             if (!isModemConnected()) {

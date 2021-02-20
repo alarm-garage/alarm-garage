@@ -3,17 +3,34 @@
 #include <Constants.h>
 #include <StateManager.h>
 #include <Networking.h>
+#include <Radio.h>
 
 void toggleArmed();
 
+bool areDoorsOpen() {
+    for (int i = 0; i <= 50; i++) {
+        if (digitalRead(AG_PIN_DOOR_SENSOR) == HIGH) return true;
+        Tasker::sleep(5);
+    }
+
+    return false;
+}
+
 StateManager stateManager;
 Networking networking(stateManager);
+Radio radio;
 
 void startSleep() {
     Serial.println("Going to sleep...");
-    networking.startSleep();
+    if (!networking.isSleeping()) networking.startSleep();
 
-    // TODO sleep of ESP
+    Tasker::sleep(100);
+
+    esp_light_sleep_start();
+    Tasker::sleep(100);
+
+    Serial.println("-----------------------------");
+    Serial.println("Woken up!");
 }
 
 void wakeUpModem() {
@@ -24,6 +41,8 @@ void wakeUpModem() {
     }
 }
 
+char rawReceivedData[33];
+
 void setup() {
     Serial.begin(115200);
     delay(200);
@@ -31,7 +50,13 @@ void setup() {
     pinMode(AG_PIN_SLEEP, OUTPUT);
     pinMode(AG_PIN_DOOR_SENSOR, INPUT);
 
-    Serial.println("Initializing...");
+    Serial.println(F("Initializing..."));
+
+    if (!radio.init()) {
+        // TODO display
+        Serial.println(F("Could not initialize radio!!!"));
+        return;
+    }
 
     if (networking.connectToGsm()) {
         networking.connectMQTT();
@@ -41,26 +66,49 @@ void setup() {
         return;
     }
 
-    Serial.println("Starting the app...");
-    stateManager.setStarted();
+    Serial.println(F("Starting the app..."));
 
-    DefaultTasker.loopEvery("DoorSensor", 500, [] {
-        bool open = digitalRead(AG_PIN_DOOR_SENSOR) == 0;
+    bool doorsOpen = areDoorsOpen();
+    Serial.printf("Doors open: %d\n", doorsOpen);
+    stateManager.setStarted(doorsOpen);
 
-        if (stateManager.handleDoorState(open)) {
-            Serial.println("Changed door state:");
-            stateManager.printCurrentState();
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_33, LOW);
+    esp_sleep_enable_ext1_wakeup(0x100000000, ESP_EXT1_WAKEUP_ANY_HIGH);
 
-            // TODO do something real - this just puts modem to sleep when doors are closed and wakes him once doors are open
-            if (!open) {
-                startSleep();
-            } else {
-                wakeUpModem();
+    DefaultTasker.loop("RadioRemote", [] {
+        startSleep();
+
+        switch (esp_sleep_get_wakeup_cause()) {
+            case ESP_SLEEP_WAKEUP_EXT0:
+                Serial.println("Radio caused wakeup!");
+                break;
+            case ESP_SLEEP_WAKEUP_EXT1: {
+                Serial.println("Doors caused wakeup!");
+                esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT1);
             }
+                break;
+            default:
+                Serial.println("Different source of wakeup!");
+        }
+
+        if (radio.radioReceive(rawReceivedData)) {
+            Serial.printf("Radio data receive: '%s'\n", rawReceivedData);
+        }
+
+        bool doorsOpen = areDoorsOpen();
+        Serial.printf("Doors open: %d\n", doorsOpen);
+        if (!doorsOpen) {
+            Serial.println("Planning interrupt for doors again");
+            esp_sleep_enable_ext1_wakeup(0x100000000, ESP_EXT1_WAKEUP_ANY_HIGH);
+        }
+
+        if (stateManager.handleDoorState(doorsOpen)) {
+            Serial.println(F("Changed door state:"));
+            stateManager.printCurrentState();
         }
     });
 
-    Serial.println("Current state:");
+    Serial.println(F("Current state:"));
     stateManager.printCurrentState();
 
     // TODO This is weird it has to run on CORE0
@@ -71,7 +119,7 @@ void setup() {
                 sprintf(buffer, "From start: %lu", millis());
 
                 if (!networking.mqttPublish("jenda-test", buffer)) {
-                    Serial.println("Could not send message!");
+                    Serial.println(F("Could not send message!"));
                 }
             } else {
                 Serial.println("MQTT disconnected");

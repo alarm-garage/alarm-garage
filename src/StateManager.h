@@ -11,7 +11,7 @@ public:
 
     void printCurrentState() const;
 
-    void setStarted();
+    void setStarted(bool doorsOpen);
 
     void setModemSleeping(bool sleeping);
 
