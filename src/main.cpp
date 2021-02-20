@@ -74,6 +74,7 @@ void setup() {
 
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_33, LOW);
     esp_sleep_enable_ext1_wakeup(0x100000000, ESP_EXT1_WAKEUP_ANY_HIGH);
+    esp_sleep_enable_timer_wakeup(15 * 1000000);
 
     DefaultTasker.loop("RadioRemote", [] {
         startSleep();
@@ -85,6 +86,14 @@ void setup() {
             case ESP_SLEEP_WAKEUP_EXT1: {
                 Serial.println("Doors caused wakeup!");
                 esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT1);
+            }
+                break;
+            case ESP_SLEEP_WAKEUP_TIMER: {
+                Serial.println("Timer caused wakeup!");
+                wakeUpModem();
+                if (!networking.mqttPublish("jenda-test", "I'm alive!!!")) {
+                    Serial.println("Could not save report!");
+                }
             }
                 break;
             default:
