@@ -14,13 +14,13 @@
 
 class Networking {
 public:
-    explicit Networking(const StateManager &stateManager);
+    explicit Networking(StateManager &stateManager);
 
     bool isModemConnected();
 
     bool isMqttConnected();
 
-    bool mqttPublish(const char *topic, const char *payload);
+    bool reportCurrentState();
 
     void startSleep();
 
@@ -33,7 +33,7 @@ public:
     void connectMQTT();
 
 private:
-    StateManager stateManager;
+    StateManager *stateManager;
     TinyGsm modem = TinyGsm(SERIALGSM);
     TinyGsmClient gsmClient = TinyGsmClient(modem);
     PubSubClient mqttClient = PubSubClient(gsmClient);

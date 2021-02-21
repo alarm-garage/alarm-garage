@@ -3,6 +3,7 @@
 
 #define MQTT_HOST "test.mosquitto.org"
 #define MQTT_PORT 1883
+#define MQTT_TOPIC "jenda-test"
 
 #define AG_PIN_SLEEP 13
 #define AG_PIN_DOOR_SENSOR 32

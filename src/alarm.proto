@@ -1,0 +1,11 @@
+syntax = "proto2";
+
+package protocol;
+
+message State {
+  required bool started = 1;
+  required bool armed = 2;
+  required bool modem_sleeping = 3;
+  required bool reconnecting = 4;
+  required bool doors_open = 5;
+}

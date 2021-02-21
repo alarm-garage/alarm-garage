@@ -1,15 +1,7 @@
 #include <StateManager.h>
 
-StateManager::StateManager(){
-    started = false;
-    modemSleeping = false;
-    reconnecting = false;
-    armed = false;
-    doorsOpen = false; // temporary
-}
-
 void StateManager::toggleArmed() {
-    armed = !armed;
+    inner.armed = !inner.armed;
     Serial.println("Changed armed state:");
     printCurrentState();
 }
@@ -17,40 +9,44 @@ void StateManager::toggleArmed() {
 void StateManager::printCurrentState() const {
     Serial.printf(
             "Started = %d Sleeping = %d Reconnecting = %d Armed = %d DoorsOpen = %d\n",
-            started, modemSleeping, reconnecting, armed, doorsOpen
+            inner.started, inner.modem_sleeping, inner.reconnecting, inner.armed, inner.doors_open
     );
 }
 
-void StateManager::setStarted(bool doorsOpen) {
-    started = true;
-    this->doorsOpen = doorsOpen;
+void StateManager::setStarted(bool doors_open) {
+    inner.started = true;
+    this->inner.doors_open = doors_open;
 }
 
 void StateManager::setModemSleeping(bool sleeping) {
-    modemSleeping = sleeping;
+    inner.modem_sleeping = sleeping;
 }
 
 void StateManager::toggleReconnecting() {
-    reconnecting = !reconnecting;
+    inner.reconnecting = !inner.reconnecting;
 }
 
 bool StateManager::isReconnecting() const {
-    return reconnecting;
+    return inner.reconnecting;
 }
 
 bool StateManager::isStarted() const {
-    return started;
+    return inner.started;
 }
 
 bool StateManager::isModemSleeping() const {
-    return modemSleeping;
+    return inner.modem_sleeping;
 }
 
 bool StateManager::handleDoorState(bool open) {
-    if (open != doorsOpen) {
-        doorsOpen = open;
+    if (open != inner.doors_open) {
+        inner.doors_open = open;
         return true;
     }
 
     return false;
+}
+
+_protocol_State StateManager::snapshot() {
+    return inner;
 }

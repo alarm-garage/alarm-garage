@@ -1,4 +1,6 @@
 #include <Networking.h>
+#include <proto/pb_encode.h>
+#include <proto/alarm.pb.h>
 
 bool Networking::isModemConnected() {
     std::lock_guard<std::mutex> lg(modem_mutex);
@@ -10,12 +12,6 @@ bool Networking::isMqttConnected() {
     return mqttClient.connected();
 }
 
-bool Networking::mqttPublish(const char *topic, const char *payload) {
-    std::lock_guard<std::mutex> lg(modem_mutex);
-
-    return mqttClient.publish(topic, payload);
-}
-
 void Networking::startSleep() {
     std::lock_guard<std::mutex> lg(modem_mutex);
     Serial.println("Putting modem to sleep");
@@ -23,11 +19,11 @@ void Networking::startSleep() {
     digitalWrite(AG_PIN_SLEEP, HIGH);
     Tasker::sleep(55);
     modem.sleepEnable(true);
-    stateManager.setModemSleeping(true);
+    stateManager->setModemSleeping(true);
 }
 
 boolean Networking::isSleeping() {
-    return stateManager.isModemSleeping();
+    return stateManager->isModemSleeping();
 }
 
 bool Networking::wakeUp() {
@@ -42,7 +38,7 @@ bool Networking::wakeUp() {
 
     Tasker::sleep(500);
 
-    stateManager.setModemSleeping(false);
+    stateManager->setModemSleeping(false);
 
     return isModemConnected() && isMqttConnected();
 }
@@ -50,10 +46,10 @@ bool Networking::wakeUp() {
 bool Networking::connectToGsm() {
     std::lock_guard<std::mutex> lg(modem_mutex);
 
-    if (stateManager.isReconnecting()) return false;
-    stateManager.toggleReconnecting();
+    if (stateManager->isReconnecting()) return false;
+    stateManager->toggleReconnecting();
 
-    stateManager.setModemSleeping(false);
+    stateManager->setModemSleeping(false);
 
     bool modemConnected = false;
 
@@ -96,17 +92,17 @@ bool Networking::connectToGsm() {
         Serial.println(" OK");
     }
 
-    stateManager.toggleReconnecting();
+    stateManager->toggleReconnecting();
     return true;
 }
 
 void Networking::connectMQTT() {
     std::lock_guard<std::mutex> lg(modem_mutex);
 
-    if (stateManager.isReconnecting()) return;
-    stateManager.toggleReconnecting();
+    if (stateManager->isReconnecting()) return;
+    stateManager->toggleReconnecting();
 
-    stateManager.setModemSleeping(false);
+    stateManager->setModemSleeping(false);
 
     mqttClient.setServer(MQTT_HOST, MQTT_PORT);
 
@@ -130,14 +126,14 @@ void Networking::connectMQTT() {
         }
     }
 
-    stateManager.toggleReconnecting();
+    stateManager->toggleReconnecting();
 }
 
-Networking::Networking(const StateManager &stateManager) {
-    this->stateManager = stateManager;
+Networking::Networking(StateManager &stateManager) {
+    this->stateManager = &stateManager;
 
     NetworkTasker.loopEvery("Reconnect", 1000, [this] {
-        if (this->stateManager.isStarted() && !this->stateManager.isModemSleeping() && !this->stateManager.isReconnecting()) {
+        if (this->stateManager->isStarted() && !this->stateManager->isModemSleeping() && !this->stateManager->isReconnecting()) {
             if (!isModemConnected()) {
                 Serial.println(F("Reconnecting modem..."));
                 Tasker::yield();
@@ -153,4 +149,30 @@ Networking::Networking(const StateManager &stateManager) {
             }
         }
     });
+}
+
+bool Networking::reportCurrentState() {
+    uint8_t buffer[128];
+    size_t message_length;
+    bool status;
+
+    pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
+
+    _protocol_State message = stateManager->snapshot();
+
+    Serial.printf(
+            "Reporting status: Started = %d Sleeping = %d Reconnecting = %d Armed = %d DoorsOpen = %d\n",
+            message.started, message.modem_sleeping, message.reconnecting, message.armed, message.doors_open
+    );
+
+    status = pb_encode(&stream, protocol_State_fields, &message);
+    message_length = stream.bytes_written;
+
+    if (!status) {
+        Serial.println("Could not encode status message!");
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lg(modem_mutex);
+    return mqttClient.publish(MQTT_TOPIC, buffer, message_length, true);
 }

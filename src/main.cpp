@@ -7,13 +7,10 @@
 
 void toggleArmed();
 
-bool areDoorsOpen() {
-    for (int i = 0; i <= 50; i++) {
-        if (digitalRead(AG_PIN_DOOR_SENSOR) == HIGH) return true;
-        Tasker::sleep(5);
-    }
+void wakeUpAndSendReport();
 
-    return false;
+bool areDoorsOpen() {
+    return digitalRead(AG_PIN_DOOR_SENSOR) == HIGH;
 }
 
 StateManager stateManager;
@@ -33,14 +30,6 @@ void startSleep() {
     Serial.println("Woken up!");
 }
 
-void wakeUpModem() {
-    if (!networking.wakeUp()) {
-        Serial.println("Could not wake up modem!");
-    } else {
-        Serial.println("Modem has woken up!");
-    }
-}
-
 char rawReceivedData[33];
 
 void setup() {
@@ -48,7 +37,7 @@ void setup() {
     delay(200);
 
     pinMode(AG_PIN_SLEEP, OUTPUT);
-    pinMode(AG_PIN_DOOR_SENSOR, INPUT);
+    pinMode(AG_PIN_DOOR_SENSOR, INPUT_PULLUP);
 
     Serial.println(F("Initializing..."));
 
@@ -90,10 +79,7 @@ void setup() {
                 break;
             case ESP_SLEEP_WAKEUP_TIMER: {
                 Serial.println("Timer caused wakeup!");
-                wakeUpModem();
-                if (!networking.mqttPublish("jenda-test", "I'm alive!!!")) {
-                    Serial.println("Could not save report!");
-                }
+                wakeUpAndSendReport();
             }
                 break;
             default:
@@ -115,28 +101,18 @@ void setup() {
         if (stateManager.handleDoorState(doorsOpen)) {
             Serial.println(F("Changed door state:"));
             stateManager.printCurrentState();
+            wakeUpAndSendReport();
         }
     });
 
     Serial.println(F("Current state:"));
     stateManager.printCurrentState();
-
-    // TODO This is weird it has to run on CORE0
-    NetworkTasker.loopEvery("Publishing", 1000, [] {
-        if (!networking.isSleeping()) {
-            if (networking.isMqttConnected()) {
-                char buffer[50];
-                sprintf(buffer, "From start: %lu", millis());
-
-                if (!networking.mqttPublish("jenda-test", buffer)) {
-                    Serial.println(F("Could not send message!"));
-                }
-            } else {
-                Serial.println("MQTT disconnected");
-            }
-        }
-    });
+    if (!networking.reportCurrentState()) {
+        Serial.println("Could not report state!");
+        Serial.printf("Modem connected: %d\n", networking.isMqttConnected());
+    }
 }
+
 
 void loop() {
     // no op - everything is handled by native tasks through Tasker
@@ -146,4 +122,15 @@ void toggleArmed() {
     stateManager.toggleArmed();
     Serial.println("Changed armed state:");
     stateManager.printCurrentState();
+}
+
+void wakeUpAndSendReport() {
+    if (networking.wakeUp()) {
+        Serial.println("Modem has woken up!");
+        if (!networking.reportCurrentState()) {
+            Serial.println("Could not report state!");
+        }
+    } else {
+        Serial.println("Could not wake up modem!");
+    }
 }

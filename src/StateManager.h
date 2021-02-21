@@ -2,11 +2,10 @@
 #define ALARM_GARAGE_STATEMANAGER_H
 
 #include <Arduino.h>
+#include <proto/alarm.pb.h>
 
 class StateManager {
 public:
-    StateManager();
-
     void toggleArmed();
 
     void printCurrentState() const;
@@ -25,12 +24,10 @@ public:
 
     bool handleDoorState(bool open);
 
+    _protocol_State snapshot();
+
 private:
-    boolean started;
-    boolean modemSleeping;
-    boolean reconnecting;
-    boolean armed;
-    boolean doorsOpen;
+    _protocol_State inner = protocol_State_init_zero;
 };
 
 #endif //ALARM_GARAGE_STATEMANAGER_H
