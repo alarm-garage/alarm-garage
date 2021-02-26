@@ -61,8 +61,8 @@ void setup() {
     Serial.printf("Doors open: %d\n", doorsOpen);
     stateManager.setStarted(doorsOpen);
 
-    esp_sleep_enable_ext0_wakeup(GPIO_NUM_33, LOW);
-    esp_sleep_enable_ext1_wakeup(0x100000000, ESP_EXT1_WAKEUP_ANY_HIGH);
+    esp_sleep_enable_ext0_wakeup(AG_WAKEUP_RADIO_PIN, LOW);
+    esp_sleep_enable_ext1_wakeup(AG_WAKEUP_DOORS_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH);
     esp_sleep_enable_timer_wakeup(15 * 1000000);
 
     DefaultTasker.loop("SleepingLoop", [] {
@@ -95,7 +95,7 @@ void setup() {
         Serial.printf("Doors open: %d\n", doorsOpen);
         if (!doorsOpen) {
             Serial.println("Planning interrupt for doors again");
-            esp_sleep_enable_ext1_wakeup(0x100000000, ESP_EXT1_WAKEUP_ANY_HIGH);
+            esp_sleep_enable_ext1_wakeup(AG_WAKEUP_DOORS_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH);
         }
 
         if (stateManager.handleDoorState(doorsOpen)) {
