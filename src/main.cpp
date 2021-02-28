@@ -63,7 +63,7 @@ void setup() {
 
     esp_sleep_enable_ext0_wakeup(AG_WAKEUP_RADIO_PIN, LOW);
     esp_sleep_enable_ext1_wakeup(AG_WAKEUP_DOORS_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH);
-    esp_sleep_enable_timer_wakeup(15 * 1000000);
+    esp_sleep_enable_timer_wakeup(AG_WAKEUP_PERIOD_SECS * 1000000);
 
     DefaultTasker.loop("SleepingLoop", [] {
         startSleep();

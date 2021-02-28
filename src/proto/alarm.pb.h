@@ -25,7 +25,7 @@ extern "C" {
 
 /* Initializer values for message structs */
 #define protocol_State_init_default              {0, 0, 0, 0, 0}
-#define protocol_State_init_zero                 {0, 1, 0, 0, 0}
+#define protocol_State_init_zero                 {0, 0, 0, 0, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define protocol_State_started_tag               1

@@ -5,7 +5,6 @@ bool Radio::init() {
     Serial.println("Initializing radio...");
 
     if (!radio.begin()) {
-        Serial.println("Could not initialize radio!!!");
         return false;
     }
 

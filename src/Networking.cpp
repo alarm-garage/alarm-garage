@@ -36,9 +36,26 @@ bool Networking::wakeUp() {
         modem.sleepEnable(false);
     }
 
-    Tasker::sleep(500);
+    Serial.println("Waiting for modem to wake up...");
+    Tasker::sleep(150);
 
     stateManager->setModemSleeping(false);
+
+    while (!(isModemConnected() && isMqttConnected())) {
+        if (!isModemConnected()) {
+            Serial.println(F("Reconnecting modem..."));
+            Tasker::yield();
+            if (!this->connectToGsm()) {
+                return false;
+            }
+        }
+
+        if (!this->isMqttConnected()) {
+            Serial.println(F("Reconnecting MQTT..."));
+            Tasker::yield();
+            this->connectMQTT();
+        }
+    }
 
     return isModemConnected() && isMqttConnected();
 }
@@ -48,6 +65,11 @@ bool Networking::connectToGsm() {
 
     if (stateManager->isReconnecting()) return false;
     stateManager->toggleReconnecting();
+
+    // send wakeup signal.. just to be sure ;-)
+    digitalWrite(AG_PIN_SLEEP, LOW);
+    Tasker::sleep(55);
+    modem.sleepEnable(false);
 
     stateManager->setModemSleeping(false);
 
@@ -78,10 +100,9 @@ bool Networking::connectToGsm() {
         Serial.println(" OK");
         Tasker::yield();
 
-        Serial.print(F("Connecting to "));
-        Serial.print(APN_HOST);
-        Tasker::yield();
-        if (!modem.gprsConnect(APN_HOST, APN_USER, APN_PASSWORD)) {
+        Serial.printf("Connecting to %s", AG_APN_HOST);
+
+        if (!modem.gprsConnect(AG_APN_HOST, AG_APN_USER, AG_APN_PASSWORD)) {
             Serial.println(" fail");
             Tasker::yield();
             continue;
@@ -104,7 +125,8 @@ void Networking::connectMQTT() {
 
     stateManager->setModemSleeping(false);
 
-    mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+    mqttClient.setServer(AG_MQTT_HOST, AG_MQTT_PORT);
+    mqttClient.setKeepAlive(300);
 
     // Loop until we're reconnected
     while (!mqttClient.connected()) {
@@ -116,7 +138,7 @@ void Networking::connectMQTT() {
         Serial.print("Attempting MQTT connection...");
         mqttClient.disconnect();
         if (mqttClient.connect(clientId.c_str())) {
-            Serial.printf(" connected to %s\n", MQTT_HOST);
+            Serial.printf(" connected to %s\n", AG_MQTT_HOST);
         } else {
             Serial.print("failed, rc=");
             Serial.print(mqttClient.state());
@@ -131,30 +153,17 @@ void Networking::connectMQTT() {
 
 Networking::Networking(StateManager &stateManager) {
     this->stateManager = &stateManager;
-
-    NetworkTasker.loopEvery("Reconnect", 1000, [this] {
-        if (this->stateManager->isStarted() && !this->stateManager->isModemSleeping() && !this->stateManager->isReconnecting()) {
-            if (!isModemConnected()) {
-                Serial.println(F("Reconnecting modem..."));
-                Tasker::yield();
-                this->connectToGsm();
-                return;
-            }
-
-            if (!this->isMqttConnected()) {
-                Serial.println(F("Reconnecting MQTT..."));
-                Tasker::yield();
-                this->connectMQTT();
-                return;
-            }
-        }
-    });
 }
 
 bool Networking::reportCurrentState() {
     uint8_t buffer[128];
     size_t message_length;
     bool status;
+
+    if (!(isModemConnected() && isMqttConnected())) {
+        Serial.println("Not connected - could not report state");
+        return false;
+    }
 
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
@@ -174,5 +183,5 @@ bool Networking::reportCurrentState() {
     }
 
     std::lock_guard<std::mutex> lg(modem_mutex);
-    return mqttClient.publish(MQTT_TOPIC, buffer, message_length, true);
+    return mqttClient.publish(AG_MQTT_TOPIC, buffer, message_length, true);
 }

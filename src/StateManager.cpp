@@ -24,6 +24,8 @@ void StateManager::setModemSleeping(bool sleeping) {
 
 void StateManager::toggleReconnecting() {
     inner.reconnecting = !inner.reconnecting;
+    Serial.println("Changed reconnecting state:");
+    printCurrentState();
 }
 
 bool StateManager::isReconnecting() const {
@@ -41,6 +43,8 @@ bool StateManager::isModemSleeping() const {
 bool StateManager::handleDoorState(bool open) {
     if (open != inner.doors_open) {
         inner.doors_open = open;
+        Serial.println("Changed doorsOpen state:");
+        printCurrentState();
         return true;
     }
 
