@@ -5,9 +5,7 @@
 #include <Networking.h>
 #include <Radio.h>
 
-void toggleArmed();
-
-void wakeUpAndSendReport();
+void wakeUpAndSendReport(bool forceTimeRefresh);
 
 bool areDoorsOpen() {
     return digitalRead(AG_PIN_DOOR_SENSOR) == HIGH;
@@ -57,29 +55,37 @@ void setup() {
 
     Serial.println(F("Starting the app..."));
 
-    bool doorsOpen = areDoorsOpen();
-    Serial.printf("Doors open: %d\n", doorsOpen);
-    stateManager.setStarted(doorsOpen);
+    stateManager.setStarted(areDoorsOpen());
 
+    // plan wakeups
     esp_sleep_enable_ext0_wakeup(AG_WAKEUP_RADIO_PIN, LOW);
     esp_sleep_enable_ext1_wakeup(AG_WAKEUP_DOORS_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH);
     esp_sleep_enable_timer_wakeup(AG_WAKEUP_PERIOD_SECS * 1000000);
 
+    // report current state right during the startup
+    if (!networking.reportCurrentState(true)) {
+        Serial.println("Could not report state!");
+        Serial.printf("Modem connected: %d\n", networking.isMqttConnected());
+    }
+
     DefaultTasker.loop("SleepingLoop", [] {
         startSleep();
 
-        switch (esp_sleep_get_wakeup_cause()) {
-            case ESP_SLEEP_WAKEUP_EXT0:
+        esp_sleep_wakeup_cause_t wakeupReason = esp_sleep_get_wakeup_cause();
+
+        switch (wakeupReason) {
+            case AG_WAKEUP_REASON_RADIO:
                 Serial.println("Radio caused wakeup!");
+                networking.resetLastTime();
                 break;
-            case ESP_SLEEP_WAKEUP_EXT1: {
+            case AG_WAKEUP_REASON_DOORS: {
                 Serial.println("Doors caused wakeup!");
-                esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT1);
+                networking.resetLastTime();
+                esp_sleep_disable_wakeup_source(AG_WAKEUP_REASON_DOORS);
             }
                 break;
-            case ESP_SLEEP_WAKEUP_TIMER: {
+            case AG_WAKEUP_REASON_TIMER: {
                 Serial.println("Timer caused wakeup!");
-                wakeUpAndSendReport();
             }
                 break;
             default:
@@ -88,29 +94,23 @@ void setup() {
 
         if (radio.radioReceive(rawReceivedData)) {
             Serial.printf("Radio data receive: '%s'\n", rawReceivedData);
-            toggleArmed();
+            stateManager.toggleArmed();
         }
 
         bool doorsOpen = areDoorsOpen();
         Serial.printf("Doors open: %d\n", doorsOpen);
-        if (!doorsOpen) {
+        if (!doorsOpen && wakeupReason == AG_WAKEUP_REASON_DOORS) {
             Serial.println("Planning interrupt for doors again");
             esp_sleep_enable_ext1_wakeup(AG_WAKEUP_DOORS_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH);
         }
 
-        if (stateManager.handleDoorState(doorsOpen)) {
-            Serial.println(F("Changed door state:"));
-            stateManager.printCurrentState();
-            wakeUpAndSendReport();
+        if (stateManager.handleDoorState(doorsOpen) || wakeupReason == AG_WAKEUP_REASON_TIMER) {
+            // force time refresh if the wakeup source was not timer
+            wakeUpAndSendReport(wakeupReason != AG_WAKEUP_REASON_TIMER);
         }
     });
 
-    Serial.println(F("Current state:"));
-    stateManager.printCurrentState();
-    if (!networking.reportCurrentState()) {
-        Serial.println("Could not report state!");
-        Serial.printf("Modem connected: %d\n", networking.isMqttConnected());
-    }
+    Serial.println(F("Startup finished!"));
 }
 
 
@@ -118,17 +118,12 @@ void loop() {
     // no op - everything is handled by native tasks through Tasker
 }
 
-void toggleArmed() {
-    stateManager.toggleArmed();
-    Serial.println("Changed armed state:");
-    stateManager.printCurrentState();
-}
-
-void wakeUpAndSendReport() {
+void wakeUpAndSendReport(bool forceTimeRefresh) {
     if (networking.wakeUp()) {
         Serial.println("Modem has woken up!");
-        if (!networking.reportCurrentState()) {
+        if (!networking.reportCurrentState(forceTimeRefresh)) {
             Serial.println("Could not report state!");
+            Serial.printf("Modem connected: %d\n", networking.isMqttConnected());
         }
     } else {
         Serial.println("Could not wake up modem!");

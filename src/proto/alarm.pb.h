@@ -18,13 +18,21 @@ typedef struct _protocol_State {
     bool doors_open;
 } protocol_State;
 
+typedef struct _protocol_Report {
+    bool has_timestamp;
+    int64_t timestamp;
+    protocol_State state;
+} protocol_Report;
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* Initializer values for message structs */
+#define protocol_Report_init_default             {false, 0, protocol_State_init_default}
 #define protocol_State_init_default              {0, 0, 0, 0, 0}
+#define protocol_Report_init_zero                {false, 0, protocol_State_init_zero}
 #define protocol_State_init_zero                 {0, 0, 0, 0, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
@@ -33,8 +41,17 @@ extern "C" {
 #define protocol_State_modem_sleeping_tag        3
 #define protocol_State_reconnecting_tag          4
 #define protocol_State_doors_open_tag            5
+#define protocol_Report_timestamp_tag            1
+#define protocol_Report_state_tag                2
 
 /* Struct field encoding specification for nanopb */
+#define protocol_Report_FIELDLIST(X, a) \
+X(a, STATIC,   OPTIONAL, INT64,    timestamp,         1) \
+X(a, STATIC,   REQUIRED, MESSAGE,  state,             2)
+#define protocol_Report_CALLBACK NULL
+#define protocol_Report_DEFAULT NULL
+#define protocol_Report_state_MSGTYPE protocol_State
+
 #define protocol_State_FIELDLIST(X, a) \
 X(a, STATIC,   REQUIRED, BOOL,     started,           1) \
 X(a, STATIC,   REQUIRED, BOOL,     armed,             2) \
@@ -44,12 +61,15 @@ X(a, STATIC,   REQUIRED, BOOL,     doors_open,        5)
 #define protocol_State_CALLBACK NULL
 #define protocol_State_DEFAULT NULL
 
+extern const pb_msgdesc_t protocol_Report_msg;
 extern const pb_msgdesc_t protocol_State_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
+#define protocol_Report_fields &protocol_Report_msg
 #define protocol_State_fields &protocol_State_msg
 
 /* Maximum encoded size of messages (where known) */
+#define protocol_Report_size                     23
 #define protocol_State_size                      10
 
 #ifdef __cplusplus

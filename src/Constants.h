@@ -8,6 +8,9 @@
 #define AG_WAKEUP_PERIOD_SECS 120
 #define AG_WAKEUP_RADIO_PIN GPIO_NUM_32
 #define AG_WAKEUP_DOORS_BITMASK 0x200000000
+#define AG_WAKEUP_REASON_DOORS ESP_SLEEP_WAKEUP_EXT1
+#define AG_WAKEUP_REASON_RADIO ESP_SLEEP_WAKEUP_EXT0
+#define AG_WAKEUP_REASON_TIMER ESP_SLEEP_WAKEUP_TIMER
 
 #define AG_PIN_SLEEP 15
 #define AG_PIN_DOOR_SENSOR 33
@@ -18,5 +21,12 @@
 #define AG_APN_HOST "internet.t-mobile.cz"
 #define AG_APN_USER ""
 #define AG_APN_PASSWORD ""
+
+#define AG_TIMESERVER_HOST "showcase.api.linx.twenty57.net"
+#define AG_TIMESERVER_PORT 80
+#define AG_TIMESERVER_PATH "/UnixTime/tounix?date=now"
+
+#define AG_TIMESERVER_SKIPS 10
+#define AG_TIMESERVER_STARTADJ 1500 // a magic, empiric value!
 
 #endif //ALARM_GARAGE_CONSTANTS_H

@@ -1,6 +1,12 @@
 #include <Networking.h>
 #include <proto/pb_encode.h>
 #include <proto/alarm.pb.h>
+#include <sstream>
+
+Networking::Networking(StateManager &stateManager) {
+    this->stateManager = &stateManager;
+    timeServerClient.connectionKeepAlive();
+}
 
 bool Networking::isModemConnected() {
     std::lock_guard<std::mutex> lg(modem_mutex);
@@ -151,11 +157,7 @@ void Networking::connectMQTT() {
     stateManager->toggleReconnecting();
 }
 
-Networking::Networking(StateManager &stateManager) {
-    this->stateManager = &stateManager;
-}
-
-bool Networking::reportCurrentState() {
+bool Networking::reportCurrentState(bool forceTimeRefresh) {
     uint8_t buffer[128];
     size_t message_length;
     bool status;
@@ -167,21 +169,96 @@ bool Networking::reportCurrentState() {
 
     pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
-    _protocol_State message = stateManager->snapshot();
+    _protocol_Report report = protocol_Report_init_zero;
+    _protocol_State state = stateManager->snapshot();
 
     Serial.printf(
             "Reporting status: Started = %d Sleeping = %d Reconnecting = %d Armed = %d DoorsOpen = %d\n",
-            message.started, message.modem_sleeping, message.reconnecting, message.armed, message.doors_open
+            state.started, state.modem_sleeping, state.reconnecting, state.armed, state.doors_open
     );
 
-    status = pb_encode(&stream, protocol_State_fields, &message);
+    report.state = state;
+
+    uint64_t currentTime = getCurrentTime(forceTimeRefresh);
+    if (currentTime > 0) {
+        report.timestamp = currentTime;
+        report.has_timestamp = true;
+    }
+
+    status = pb_encode(&stream, protocol_Report_fields, &report);
     message_length = stream.bytes_written;
 
     if (!status) {
-        Serial.println("Could not encode status message!");
+        Serial.println("Could not encode status report!");
         return false;
     }
 
     std::lock_guard<std::mutex> lg(modem_mutex);
     return mqttClient.publish(AG_MQTT_TOPIC, buffer, message_length, true);
+}
+
+uint64_t Networking::getCurrentTime(bool forceRefresh) {
+    uint64_t guessedTime = lastTime + AG_WAKEUP_PERIOD_SECS * 1000L + timeAdj;
+
+    if (!forceRefresh && skippedTimeRenewal < AG_TIMESERVER_SKIPS && lastTime > 0) {
+        lastTime = guessedTime;
+        skippedTimeRenewal++;
+        Serial.printf("Guessed current time: %llu\n", lastTime);
+        return lastTime;
+    }
+
+    if (!isModemConnected()) {
+        Serial.println("Not connected - could not get current time");
+        return -1;
+    }
+
+    ulong start = millis();
+
+    if (!timeServerClient.connected()) {
+        Serial.println("Time client not connected :-(");
+    }
+
+    std::lock_guard<std::mutex> lg(modem_mutex);
+
+    if (timeServerClient.get(AG_TIMESERVER_PATH) != 0) {
+        Serial.println("Could not get current time");
+        return -1;
+    }
+
+    int statusCode = timeServerClient.responseStatusCode();
+    const String &body = timeServerClient.responseBody();
+
+    if (statusCode != 200) {
+        Serial.printf("Could not get current time, status HTTP %d, body: %s\n", statusCode, body.c_str());
+        return -1;
+    }
+
+    if (!timeServerClient.connected()) {
+        Serial.println("AFTER Time client not connected :-(");
+    }
+
+    uint64_t currentTime;
+    std::istringstream iss(body.c_str());
+    iss >> currentTime;
+
+    currentTime *= 1000;
+    guessedTime += (millis() - start); // duration of the update above
+
+    if (!forceRefresh && lastTime > 0) {
+        uint64_t diff = currentTime - guessedTime;
+        timeAdj += ((int) diff) / (AG_TIMESERVER_SKIPS + 1);
+        Serial.printf("Guessed it's %llu but it's %llu; new timeAdj: %d\n", guessedTime, currentTime, timeAdj);
+    }
+
+    lastTime = currentTime;
+    skippedTimeRenewal = 0;
+
+    Serial.printf("Current time: %llu\n", currentTime);
+
+    return lastTime;
+}
+
+void Networking::resetLastTime() {
+    Serial.println("Resetting last time");
+    lastTime = 0;
 }

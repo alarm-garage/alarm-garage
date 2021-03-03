@@ -6,6 +6,9 @@
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
+PB_BIND(protocol_Report, protocol_Report, AUTO)
+
+
 PB_BIND(protocol_State, protocol_State, AUTO)
 
 
