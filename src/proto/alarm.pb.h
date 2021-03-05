@@ -10,6 +10,20 @@
 #endif
 
 /* Struct definitions */
+typedef PB_BYTES_ARRAY_T(14) protocol_RemoteSignal_payload_t;
+typedef PB_BYTES_ARRAY_T(8) protocol_RemoteSignal_auth_tag_t;
+typedef struct _protocol_RemoteSignal {
+    char client_id[5];
+    protocol_RemoteSignal_payload_t payload;
+    protocol_RemoteSignal_auth_tag_t auth_tag;
+} protocol_RemoteSignal;
+
+typedef PB_BYTES_ARRAY_T(10) protocol_RemoteSignalPayload_random_t;
+typedef struct _protocol_RemoteSignalPayload {
+    uint32_t code;
+    protocol_RemoteSignalPayload_random_t random;
+} protocol_RemoteSignalPayload;
+
 typedef struct _protocol_State {
     bool started;
     bool armed;
@@ -32,10 +46,19 @@ extern "C" {
 /* Initializer values for message structs */
 #define protocol_Report_init_default             {false, 0, protocol_State_init_default}
 #define protocol_State_init_default              {0, 0, 0, 0, 0}
+#define protocol_RemoteSignal_init_default       {"", {0, {0}}, {0, {0}}}
+#define protocol_RemoteSignalPayload_init_default {0, {0, {0}}}
 #define protocol_Report_init_zero                {false, 0, protocol_State_init_zero}
 #define protocol_State_init_zero                 {0, 0, 0, 0, 0}
+#define protocol_RemoteSignal_init_zero          {"", {0, {0}}, {0, {0}}}
+#define protocol_RemoteSignalPayload_init_zero   {0, {0, {0}}}
 
 /* Field tags (for use in manual encoding/decoding) */
+#define protocol_RemoteSignal_client_id_tag      1
+#define protocol_RemoteSignal_payload_tag        2
+#define protocol_RemoteSignal_auth_tag_tag       3
+#define protocol_RemoteSignalPayload_code_tag    1
+#define protocol_RemoteSignalPayload_random_tag  2
 #define protocol_State_started_tag               1
 #define protocol_State_armed_tag                 2
 #define protocol_State_modem_sleeping_tag        3
@@ -61,16 +84,35 @@ X(a, STATIC,   REQUIRED, BOOL,     doors_open,        5)
 #define protocol_State_CALLBACK NULL
 #define protocol_State_DEFAULT NULL
 
+#define protocol_RemoteSignal_FIELDLIST(X, a) \
+X(a, STATIC,   REQUIRED, STRING,   client_id,         1) \
+X(a, STATIC,   REQUIRED, BYTES,    payload,           2) \
+X(a, STATIC,   REQUIRED, BYTES,    auth_tag,          3)
+#define protocol_RemoteSignal_CALLBACK NULL
+#define protocol_RemoteSignal_DEFAULT NULL
+
+#define protocol_RemoteSignalPayload_FIELDLIST(X, a) \
+X(a, STATIC,   REQUIRED, UINT32,   code,              1) \
+X(a, STATIC,   REQUIRED, BYTES,    random,            2)
+#define protocol_RemoteSignalPayload_CALLBACK NULL
+#define protocol_RemoteSignalPayload_DEFAULT NULL
+
 extern const pb_msgdesc_t protocol_Report_msg;
 extern const pb_msgdesc_t protocol_State_msg;
+extern const pb_msgdesc_t protocol_RemoteSignal_msg;
+extern const pb_msgdesc_t protocol_RemoteSignalPayload_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
 #define protocol_Report_fields &protocol_Report_msg
 #define protocol_State_fields &protocol_State_msg
+#define protocol_RemoteSignal_fields &protocol_RemoteSignal_msg
+#define protocol_RemoteSignalPayload_fields &protocol_RemoteSignalPayload_msg
 
 /* Maximum encoded size of messages (where known) */
 #define protocol_Report_size                     23
 #define protocol_State_size                      10
+#define protocol_RemoteSignal_size               32
+#define protocol_RemoteSignalPayload_size        18
 
 #ifdef __cplusplus
 } /* extern "C" */

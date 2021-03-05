@@ -9,7 +9,7 @@ const byte address[6] = "1tran";
 class Radio {
 public:
     bool init();
-    bool radioReceive(char* buff);
+    bool radioReceive(byte buff[AG_RADIO_PAYLOAD_SIZE]);
 private:
     RF24 radio = RF24(AG_PIN_RF_CE, AG_PIN_RF_CSN);
 };

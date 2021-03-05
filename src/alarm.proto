@@ -1,5 +1,7 @@
 syntax = "proto2";
 
+import "nanopb.proto";
+
 package protocol;
 
 message Report {
@@ -13,4 +15,15 @@ message State {
   required bool modem_sleeping = 3;
   required bool reconnecting = 4;
   required bool doors_open = 5;
+}
+
+message RemoteSignal {
+  required string client_id = 1 [(nanopb).max_length = 4];
+  required bytes payload = 2 [(nanopb).max_size = 14];
+  required bytes auth_tag = 3 [(nanopb).max_size = 8];
+}
+
+message RemoteSignalPayload {
+  required uint32 code = 1;
+  required bytes random = 2 [(nanopb).max_size = 10];
 }

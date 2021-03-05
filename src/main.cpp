@@ -2,6 +2,7 @@
 #include <Tasker.h>
 #include <Constants.h>
 #include <StateManager.h>
+#include <RollingCodeManager.h>
 #include <Networking.h>
 #include <Radio.h>
 
@@ -11,6 +12,7 @@ bool areDoorsOpen() {
     return digitalRead(AG_PIN_DOOR_SENSOR) == HIGH;
 }
 
+RollingCodeManager codeManager;
 StateManager stateManager;
 Networking networking(stateManager);
 Radio radio;
@@ -28,7 +30,7 @@ void startSleep() {
     Serial.println("Woken up!");
 }
 
-char rawReceivedData[33];
+byte rawReceivedData[AG_RADIO_PAYLOAD_SIZE];
 
 void setup() {
     Serial.begin(115200);
@@ -38,6 +40,11 @@ void setup() {
     pinMode(AG_PIN_DOOR_SENSOR, INPUT_PULLUP);
 
     Serial.println(F("Initializing..."));
+
+    if (!SPIFFS.begin()) {
+        Serial.println("Could not init FS");
+        return;
+    }
 
     if (!radio.init()) {
         // TODO display
@@ -54,6 +61,11 @@ void setup() {
     }
 
     Serial.println(F("Starting the app..."));
+
+    if (!codeManager.init()) {
+        Serial.println("Could not init code manager");
+        return;
+    }
 
     stateManager.setStarted(areDoorsOpen());
 
@@ -93,8 +105,10 @@ void setup() {
         }
 
         if (radio.radioReceive(rawReceivedData)) {
-            Serial.printf("Radio data receive: '%s'\n", rawReceivedData);
-            stateManager.toggleArmed();
+            if (codeManager.validate(rawReceivedData)) {
+                Serial.println("Signal validated!");
+                stateManager.toggleArmed();
+            }
         }
 
         bool doorsOpen = areDoorsOpen();

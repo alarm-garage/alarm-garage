@@ -12,4 +12,10 @@ PB_BIND(protocol_Report, protocol_Report, AUTO)
 PB_BIND(protocol_State, protocol_State, AUTO)
 
 
+PB_BIND(protocol_RemoteSignal, protocol_RemoteSignal, AUTO)
+
+
+PB_BIND(protocol_RemoteSignalPayload, protocol_RemoteSignalPayload, AUTO)
+
+
 
