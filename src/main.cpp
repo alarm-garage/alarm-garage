@@ -113,7 +113,7 @@ void setup() {
 
         bool doorsOpen = areDoorsOpen();
         Serial.printf("Doors open: %d\n", doorsOpen);
-        if (!doorsOpen && wakeupReason == AG_WAKEUP_REASON_DOORS) {
+        if (!doorsOpen) {
             Serial.println("Planning interrupt for doors again");
             esp_sleep_enable_ext1_wakeup(AG_WAKEUP_DOORS_BITMASK, ESP_EXT1_WAKEUP_ANY_HIGH);
         }
