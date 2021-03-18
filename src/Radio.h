@@ -10,8 +10,8 @@ const byte addressSend[6] = "2tran";
 class Radio {
 public:
     bool init();
-    bool radioReceive(byte buff[AG_RADIO_PAYLOAD_SIZE]);
-    bool radioSend(byte buff[AG_RADIO_PAYLOAD_SIZE]);
+    uint8_t radioReceive(byte *buff);
+    bool radioSend(byte *buff, uint8_t len);
 private:
     RF24 radio = RF24(AG_PIN_RF_CE, AG_PIN_RF_CSN);
 };

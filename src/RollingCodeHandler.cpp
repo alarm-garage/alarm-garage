@@ -1,6 +1,6 @@
 #include "RollingCodeHandler.h"
 
-byte rawSignal[AG_RADIO_PAYLOAD_SIZE];
+byte rawSignal[AG_RADIO_MAX_PAYLOAD_SIZE];
 
 RollingCodeHandler::RollingCodeHandler(StateManager &stateManager, Radio &radio) {
     this->stateManager = &stateManager;
@@ -17,11 +17,12 @@ RollingCodeHandler::RollingCodeHandler(StateManager &stateManager, Radio &radio)
 bool RollingCodeHandler::handleRadioSignal() {
     std::lock_guard<std::mutex> lg(mutex);
 
-    if (!radio->radioReceive(rawSignal)) return false;
+    uint8_t bytesLen;
+    if ((bytesLen = radio->radioReceive(rawSignal)) <= 0) return false;
 
     // Decode whole signal:
 
-    pb_istream_t stream = pb_istream_from_buffer(rawSignal, AG_RADIO_PAYLOAD_SIZE);
+    pb_istream_t stream = pb_istream_from_buffer(rawSignal, bytesLen);
 
     _protocol_RemoteSignal signal = protocol_RemoteSignal_init_zero;
 
@@ -48,7 +49,7 @@ bool RollingCodeHandler::handleRadioSignal() {
         return false;
     }
 
-    pb_istream_t stream2 = pb_istream_from_buffer(rawSignal, AG_SIGNAL_DATA_SIZE);
+    pb_istream_t stream2 = pb_istream_from_buffer(rawSignal, signal.payload.size); // size encrypted == size decrypted
     _protocol_RemoteSignalPayload signalPayload = protocol_RemoteSignalPayload_init_zero;
 
     // Decode signal payload data:
@@ -60,8 +61,8 @@ bool RollingCodeHandler::handleRadioSignal() {
 
     // Verify validity of the code:
 
-    uint32_t requiredCode = clientState.lastCode + 1;
-    bool codeValid = signalPayload.code >= requiredCode;
+    const uint32_t requiredCode = clientState.lastCode + 1;
+    const bool codeValid = signalPayload.code >= requiredCode;
 
     if (!codeValid) {
         Serial.printf("Received code %d, required >= %d, clientId %s\n", signalPayload.code, requiredCode, clientId.c_str());
@@ -85,8 +86,8 @@ bool RollingCodeHandler::handleRadioSignal() {
     _protocol_RemoteSignalResponsePayload signalResponsePayload = protocol_RemoteSignalResponsePayload_init_zero;
     signalResponsePayload.code = signalPayload.code;
     signalResponsePayload.success = true;
-    esp_fill_random(signalResponsePayload.random.bytes, 8);
-    signalResponsePayload.random.size = 8;
+    esp_fill_random(signalResponsePayload.random.bytes, 4);
+    signalResponsePayload.random.size = 4;
 
     if (!encryptSignalResponsePayload(&signalResponse, clientState.key, clientState.authData, signalResponsePayload)) {
         Serial.println("Could not encrypt signal response payload!");
@@ -95,20 +96,14 @@ bool RollingCodeHandler::handleRadioSignal() {
 
     printf("Sending success response to code %d\n", clientState.lastCode);
 
-    pb_ostream_t stream3 = pb_ostream_from_buffer(rawSignal, AG_RADIO_PAYLOAD_SIZE);
+    pb_ostream_t stream3 = pb_ostream_from_buffer(rawSignal, AG_RADIO_MAX_PAYLOAD_SIZE);
 
     if (!pb_encode(&stream3, protocol_RemoteSignalResponse_fields, &signalResponse)) {
         Serial.printf("Encoding signal response failed: %s\n", PB_GET_ERROR(&stream3));
         return false;
     }
 
-    // TODO support variable length of encoding
-//    Serial.print("Signal response encoded into ");
-//    size_t bytes = stream3.bytes_written;
-//    Serial.print(bytes);
-//    Serial.print(" bytes\n");
-
-    return radio->radioSend(rawSignal);
+    return radio->radioSend(rawSignal, stream3.bytes_written);
 }
 
 bool RollingCodeHandler::decryptSignal(byte *buff, const byte *key, const byte *authData, const _protocol_RemoteSignal *signal) {
@@ -122,7 +117,7 @@ bool RollingCodeHandler::decryptSignal(byte *buff, const byte *key, const byte *
     }
 
     cipher.addAuthData(authData, AG_SIGNAL_AUTH_SIZE);
-    cipher.decrypt(buff, signal->payload.bytes, AG_SIGNAL_DATA_SIZE);
+    cipher.decrypt(buff, signal->payload.bytes, signal->payload.size);
     return cipher.checkTag(signal->auth_tag.bytes, AG_SIGNAL_AUTH_TAG_SIZE);
 }
 
@@ -132,7 +127,7 @@ bool RollingCodeHandler::encryptSignalResponsePayload(_protocol_RemoteSignalResp
                                                       _protocol_RemoteSignalResponsePayload payload) {
     cipher.clear();
 
-    uint8_t pb_buffer[16];
+    uint8_t pb_buffer[protocol_RemoteSignalResponsePayload_size];
     pb_ostream_t stream = pb_ostream_from_buffer(pb_buffer, sizeof(pb_buffer));
 
     if (!pb_encode(&stream, protocol_RemoteSignalResponsePayload_fields, &payload)) {
@@ -140,23 +135,18 @@ bool RollingCodeHandler::encryptSignalResponsePayload(_protocol_RemoteSignalResp
         return false;
     }
 
-//    Serial.print("Signal response payload encoded into ");
-//    size_t bytes = stream.bytes_written;
-//    Serial.print(bytes);
-//    Serial.print(" bytes\n");
+    const size_t size = stream.bytes_written;
 
     if (!cipher.setKey(key, AG_SIGNAL_KEY_SIZE)) {
-        Serial.print("setKey ");
         return false;
     }
     if (!cipher.setIV(iv, AG_SIGNAL_IV_SIZE)) {
-        Serial.print("setIV ");
         return false;
     }
 
     cipher.addAuthData(authData, AG_SIGNAL_AUTH_SIZE);
-    cipher.encrypt(output->payload.bytes, pb_buffer, AG_SIGNAL_DATA_SIZE);
-    output->payload.size = AG_SIGNAL_DATA_SIZE;
+    cipher.encrypt(output->payload.bytes, pb_buffer, size);
+    output->payload.size = size;
     cipher.computeTag(output->auth_tag.bytes, AG_SIGNAL_AUTH_TAG_SIZE);
     output->auth_tag.size = AG_SIGNAL_AUTH_TAG_SIZE;
 

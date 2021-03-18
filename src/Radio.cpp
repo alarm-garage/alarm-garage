@@ -12,7 +12,6 @@ bool Radio::init() {
 
     radio.setAutoAck(true);
     radio.enableDynamicPayloads();
-    radio.setPayloadSize(AG_RADIO_PAYLOAD_SIZE);
     radio.setDataRate(RF24_250KBPS);
     radio.setRetries(15, 15);
     radio.setPALevel(RF24_PA_MAX);
@@ -25,18 +24,19 @@ bool Radio::init() {
     return true;
 }
 
-bool Radio::radioReceive(byte buff[AG_RADIO_PAYLOAD_SIZE]) {
+uint8_t Radio::radioReceive(byte *buff) {
     if (radio.available()) {
-        radio.read(buff, AG_RADIO_PAYLOAD_SIZE);
-        return true;
+        const uint8_t size = radio.getDynamicPayloadSize();
+        radio.read(buff, size);
+        return size;
     }
 
-    return false;
+    return -1;
 }
 
-bool Radio::radioSend(byte buff[AG_RADIO_PAYLOAD_SIZE]) {
+bool Radio::radioSend(byte *buff, uint8_t len) {
     radio.stopListening();
-    bool r = radio.write(buff, AG_RADIO_PAYLOAD_SIZE);
+    bool r = radio.write(buff, len);
     radio.startListening();
     return r;
 }
