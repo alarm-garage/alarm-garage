@@ -17,7 +17,8 @@ bool Radio::init() {
     radio.setRetries(15, 15);
     radio.setPALevel(RF24_PA_MAX);
     radio.setChannel(109);
-    radio.openReadingPipe(1, address);
+    radio.openReadingPipe(1, addressReceive);
+    radio.openWritingPipe(addressSend);
     radio.startListening();
     radio.printDetails();
 
@@ -25,11 +26,17 @@ bool Radio::init() {
 }
 
 bool Radio::radioReceive(byte buff[AG_RADIO_PAYLOAD_SIZE]) {
-    byte clientId = 0;
-    if (radio.available(&clientId)) {
+    if (radio.available()) {
         radio.read(buff, AG_RADIO_PAYLOAD_SIZE);
         return true;
     }
 
     return false;
+}
+
+bool Radio::radioSend(byte buff[AG_RADIO_PAYLOAD_SIZE]) {
+    radio.stopListening();
+    bool r = radio.write(buff, AG_RADIO_PAYLOAD_SIZE);
+    radio.startListening();
+    return r;
 }

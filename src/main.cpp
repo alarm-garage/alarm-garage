@@ -2,7 +2,7 @@
 #include <Tasker.h>
 #include <Constants.h>
 #include <StateManager.h>
-#include <RollingCodeManager.h>
+#include <RollingCodeHandler.h>
 #include <Networking.h>
 #include <Radio.h>
 
@@ -12,10 +12,10 @@ bool areDoorsOpen() {
     return digitalRead(AG_PIN_DOOR_SENSOR) == HIGH;
 }
 
-RollingCodeManager codeManager;
-StateManager stateManager;
-Networking networking(stateManager);
 Radio radio;
+StateManager stateManager;
+RollingCodeHandler codeHandler(stateManager, radio);
+Networking networking(stateManager);
 
 void startSleep() {
     Serial.println("Going to sleep...");
@@ -29,8 +29,6 @@ void startSleep() {
     Serial.println("-----------------------------");
     Serial.println("Woken up!");
 }
-
-byte rawReceivedData[AG_RADIO_PAYLOAD_SIZE];
 
 void setup() {
     Serial.begin(115200);
@@ -62,7 +60,7 @@ void setup() {
 
     Serial.println(F("Starting the app..."));
 
-    if (!codeManager.init()) {
+    if (!codeHandler.init()) {
         Serial.println("Could not init code manager");
         return;
     }
@@ -104,12 +102,7 @@ void setup() {
                 Serial.println("Different source of wakeup!");
         }
 
-        if (radio.radioReceive(rawReceivedData)) {
-            if (codeManager.validate(rawReceivedData)) {
-                Serial.println("Signal validated!");
-                stateManager.toggleArmed();
-            }
-        }
+        codeHandler.handleRadioSignal();
 
         bool doorsOpen = areDoorsOpen();
         Serial.printf("Doors open: %d\n", doorsOpen);
